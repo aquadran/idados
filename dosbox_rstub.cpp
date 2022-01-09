@@ -9,12 +9,8 @@ char wanted_name[] = "Remote DOSBox debugger";
 #define DEBUGGER_FLAGS DBG_FLAG_REMOTE | DBG_FLAG_USE_SREGS
 #define DEBUGGER_RESMOD (DBG_RESMOD_STEP_INTO)
 
-//#define HAVE_APPCALL
-
-//////
 #include "tcpip.h"
 #include <ua.hpp>
-#include <area.hpp>
 #include <idd.hpp>
 #include <loader.hpp>
 #include <ida.hpp>

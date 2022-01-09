@@ -4,7 +4,6 @@
 #include <ida.hpp>
 #include <err.h>
 #include <idp.hpp>
-#include <srarea.hpp>
 #include <diskio.hpp>
 #include <segment.hpp>
 #include "consts.h"
@@ -37,20 +36,10 @@ bool debug_debugger;
 // TODO: Can we support this?
 bool dosbox_debmod_t::reuse_broken_connections = false;
 
-
-static const int T = 20;
-
 //--------------------------------------------------------------------------
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4355)
-#endif
-dosbox_debmod_t::dosbox_debmod_t(void) 
+dosbox_debmod_t::dosbox_debmod_t(void)
 {
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 //--------------------------------------------------------------------------
 dosbox_debmod_t::~dosbox_debmod_t(void)
@@ -60,31 +49,21 @@ dosbox_debmod_t::~dosbox_debmod_t(void)
 //--------------------------------------------------------------------------
 bool idaapi dosbox_debmod_t::close_remote(void)
 {
-//  trk.term();
-  return true;
+    return true;
 }
 
 //--------------------------------------------------------------------------
 bool idaapi dosbox_debmod_t::open_remote(const char * /*hostname*/, int port_number, const char * /*password*/)
 {
- // if ( trk.init(port_number) )
     return true;
- // warning("Could not open serial port: %s", winerr(GetLastError()));
- // return false;
 }
 
 //--------------------------------------------------------------------------
 void dosbox_debmod_t::cleanup(void)
 {
   inherited::cleanup();
-  //proclist.clear();
-  dlls_to_import.clear();
-  dlls.clear();
-  stepping.clear();
-  //threads.clear();
   events.clear();
   bpts.clear();
-  process_name.clear();
   exited = false;
 }
 
@@ -102,7 +81,7 @@ int idaapi dosbox_debmod_t::dbg_add_bpt(bpttype_t type, ea_t ea, int len)
   }
 
  printf("new breakpoint at 0x%x.\n", ea);
- 
+
  //ea += r_debug.base;
  switch(type)
  {
@@ -132,67 +111,32 @@ int idaapi dosbox_debmod_t::dbg_del_bpt(bpttype_t /*type*/, ea_t ea, const uchar
     int bid = p->second.bid;
     bpts.erase(p);
 
-//    if ( !trk.del_bpt(bid) )
-//      return 0; // failed? odd
     DEBUG_DelBreakPoint((PhysPt)ea);
   }
   return 1; // ok
 }
 
 //--------------------------------------------------------------------------
-int idaapi dosbox_debmod_t::dbg_init(bool _debug_debugger)
+void idaapi dosbox_debmod_t::dbg_set_debugging(bool _debug_debugger)
+{
+  debug_debugger = ::debug_debugger = _debug_debugger;
+}
+
+//--------------------------------------------------------------------------
+int idaapi dosbox_debmod_t::dbg_init(void)
 {
   cleanup();
-  debug_debugger = ::debug_debugger = _debug_debugger;
-  return 1; //trk.ping() && trk.connect();
+  return 1;
 }
 
 //--------------------------------------------------------------------------
 void idaapi dosbox_debmod_t::dbg_term(void)
 {
-  //trk.disconnect();
-  return; //trk.term();
 }
 
-//--------------------------------------------------------------------------
-// input is valid only if n==0
-int idaapi dosbox_debmod_t::dbg_process_get_info(int n, const char * /*input*/, process_info_t *info)
+int idaapi dosbox_debmod_t::dbg_get_processes(procinfo_vec_t *procs)
 {
-  if ( n == 0 ) // initialize the list
-  {
-
-//    if ( !trk.get_process_list(proclist) )
-      return 0;
-
-
-#if 0 // commented out because we can not match file names with process names
-    if ( input != NULL )
-    { // remove all unmatching processes from the list
-      qstring inpbuf;
-      input = qbasename(input);
-      const char *end = strchr(input, '.');
-      if ( end != NULL )
-      { // ignore everything after '.' (remove extension)
-        inpbuf = qstring(input, end-input);
-        input = inpbuf.c_str();
-      }
-      for ( int i=proclist.size()-1; i >= 0; i-- )
-        if ( strstr(proclist[i].name.c_str(), input) == NULL )
-          proclist.erase(proclist.begin()+i);
-    }
-#endif
-  }
-/*
-  if ( n >= proclist.size() )
     return 0;
-  if ( info != NULL )
-  {
-    proclist_entry_t &pe = proclist[n];
-    info->pid = pe.pid;
-    qstrncpy(info->name, pe.name.c_str(), sizeof(info->name));
-  }
-*/
-  return 1;
 }
 
 //--------------------------------------------------------------------------
@@ -216,7 +160,7 @@ int idaapi dosbox_debmod_t::dbg_start_process(
   app_base = find_app_base();
   printf("app_base = %x\n", app_base);
   stack = SegValue(ss);
-printf("name %s \n",path);
+  printf("name %s \n",path);
   create_process_start_event(path);
   return 1;
 }
@@ -235,202 +179,11 @@ void dosbox_debmod_t::create_process_start_event(const char *path)
   ev.ea = BADADDR;
   ev.handled = false;
   qstrncpy(ev.modinfo.name, path, sizeof(ev.modinfo.name));
-  process_name = path;
   ev.modinfo.base = app_base + 0x100; //base + PSP //entry_point; //pi.codeaddr;
   ev.modinfo.size = 0;
   ev.modinfo.rebase_to = app_base + 0x100; //base + PSP //entry_point;
   events.enqueue(ev, IN_BACK);
 }
-
-//--------------------------------------------------------------------------
-const exception_info_t *dosbox_debmod_t::find_exception_by_desc(const char *desc) const
-{
-  qvector<exception_info_t>::const_iterator p;
-  for ( p=exceptions.begin(); p != exceptions.end(); ++p )
-  {
-    const char *tpl = p->desc.c_str();
-    size_t len = p->desc.length();
-    if ( strstr(tpl, "panic") != NULL )
-      len = strchr(tpl, ' ') - tpl; // just first word
-    if ( strnicmp(tpl, desc, len) == 0 )
-      return &*p;
-  }
-  return NULL;
-}
-
-//--------------------------------------------------------------------------
-void dosbox_debmod_t::add_dll(const image_info_t &ii)
-{
-  //dlls.insert(std::make_pair(ii.codeaddr, ii));
-  //dlls_to_import.insert(ii.codeaddr);
-}
-
-//--------------------------------------------------------------------------
-void dosbox_debmod_t::del_dll(const char *name)
-{
-/*
-  for ( images_t::iterator p=dlls.begin(); p != dlls.end(); ++p )
-  {
-    if ( strcmp(p->second.name.c_str(), name) == 0 )
-    {
-      dlls_to_import.erase(p->first);
-      dlls.erase(p);
-      return;
-    }
-  }
-  msg("Unknown DLL %s got unloaded\n", name);
-*/
-}
-
-//--------------------------------------------------------------------------
-/*
-bool metrotrk_t::handle_notification(uchar seq, void *ud) // plugin version
-{
-  dosbox_debmod_t &dm = *(dosbox_debmod_t *)ud;
-  int i = 0;
-  bool suspend = true;
-  debug_event_t ev;
-
-  uchar type = extract_byte(i);
-  switch ( type )
-  {
-    case TrkOSNotifyCreated:
-      {
-        image_info_t ii;
-        uint16 item = extract_int16(i);
-        QASSERT(item == TrkOSDLLItem);
-        qnotused(item);
-        ii.pid       = extract_int32(i);
-        ii.tid       = extract_int32(i);
-        ii.codeaddr  = extract_int32(i);
-        ii.dataaddr  = extract_int32(i);
-        ii.name      = extract_pstr(i);
-        ev.eid = LIBRARY_LOAD;
-        ev.pid = ii.pid;
-        ev.tid = ii.tid;
-        ev.ea = BADADDR;
-        ev.handled = false;
-        qstrncpy(ev.modinfo.name, ii.name.c_str(), sizeof(ev.modinfo.name));
-        ev.modinfo.base = ii.codeaddr;
-        ev.modinfo.size = 0;
-        ev.modinfo.rebase_to = BADADDR;
-        dm.add_dll(ii);
-      }
-      break;
-
-    case TrkOSNotifyDeleted:
-      {
-        uint16 item = extract_int16(i);
-        if ( debug_debugger )
-          msg("NotifyDeleted Item: %s\n", get_os_item_name(item));
-        switch ( item )
-        {
-          case TrkOSProcessItem:
-            {
-              uint32 exitcode = extract_int32(i);
-              uint32 pid      = extract_int32(i);
-              ev.eid = PROCESS_EXIT;
-              ev.pid = pid;
-              ev.tid = -1;
-              ev.ea = BADADDR;
-              ev.handled = false;
-              ev.exit_code = exitcode;
-              tpi.pid = -1;
-              dm.exited = true;
-            }
-            break;
-          case TrkOSDLLItem:
-            {
-              int32 pid = extract_int32(i);
-              int32 tid = extract_int32(i);
-              qstring name = extract_pstr(i);
-              ev.eid = LIBRARY_UNLOAD;
-              ev.pid = pid;
-              ev.tid = tid;
-              ev.ea = BADADDR;
-              ev.handled = false;
-              qstrncpy(ev.info, name.c_str(), sizeof(ev.info));
-              dm.del_dll(name.c_str());
-            }
-            break;
-          default:
-            INTERR(); // not implemented
-        }
-      }
-      break;
-
-    case TrkNotifyStopped:
-      {
-        ev.ea  = extract_int32(i);
-        ev.pid = extract_int32(i);
-        ev.tid = extract_int32(i);
-        qstring desc = extract_pstr(i);
-        if ( debug_debugger )
-        {
-          msg("  Current PC: %08X\n", ev.ea);
-          msg("  Process ID: %08X\n", ev.pid);
-          msg("  Thread ID : %08X\n", ev.tid);
-          msg("  Name      : %s\n", desc.c_str());
-        }
-        ev.handled = false;
-        // there are various reasons why the app may stop
-        if ( desc.empty() ) // bpt
-        {
-          // bpt exists?
-          if ( dm.bpts.find(ev.ea) != dm.bpts.end() )
-          {
-            ev.eid = BREAKPOINT;
-            ev.bpt.hea = BADADDR;
-            ev.bpt.kea = BADADDR;
-          }
-          else // no, this must be a single step
-          {
-            ev.eid = STEP;
-          }
-          break;
-        }
-        // an exception
-        ev.eid = EXCEPTION;
-        ev.exc.ea = BADADDR;
-        qstrncpy(ev.exc.info, desc.c_str(), sizeof(ev.exc.info));
-        // trk returns the exception description, but no code.
-        // convert the description to the code
-        const exception_info_t *ei = dm.find_exception_by_desc(desc.c_str());
-        if ( ei != NULL )
-        {
-          int code = ei->code;
-          ev.exc.code = code;
-          ev.exc.can_cont = code != 20        // abort
-                         && code != 21        // kill
-                         && code < 25;        // regular exception
-          ev.handled = ei->handle();
-          suspend = ei->break_on();
-        }
-        else
-        {
-          ev.exc.code = 25; // just something
-          ev.exc.can_cont = true;
-        }
-      }
-      break;
-
-    default:
-      // unexpected packet?!
-//      msg("Unexpected packet %d\n", type);
-      return false;
-  }
-  // send reply
-  if ( !dm.exited )
-    send_reply_ok(seq);
-  if ( !suspend )
-    dm.dbg_continue_after_event(&ev);
-  else
-    dm.events.enqueue(ev, IN_BACK);
-
-  return true;
-}
-*/
-
 
 //--------------------------------------------------------------------------
 gdecode_t idaapi dosbox_debmod_t::dbg_get_debug_event(debug_event_t *event, int timeout_ms)
@@ -447,7 +200,6 @@ gdecode_t idaapi dosbox_debmod_t::dbg_get_debug_event(debug_event_t *event, int 
       return GDE_ONE_EVENT;
     }
     // no pending events, check the target
-//    trk.poll_for_event(ida_is_idle ? TIMEOUT : 0);
     if ( events.empty() )
       break;
   }
@@ -456,48 +208,8 @@ gdecode_t idaapi dosbox_debmod_t::dbg_get_debug_event(debug_event_t *event, int 
 }
 
 //--------------------------------------------------------------------------
-int idaapi dosbox_debmod_t::dbg_attach_process(pid_t pid, int /*event_id*/, int /* flags */)
+int idaapi dosbox_debmod_t::dbg_attach_process(pid_t process_id, int event_id, int flags)
 {
-/*
-  if ( !trk.attach_process(pid) )
-    return 0;
-
-  // get information on the existing threads
-  thread_list_t tlist;
-  trk.get_thread_list(pid, tlist);
-  if ( tlist.empty() )
-  {
-    trk.disconnect();
-    return 0;       // something is wrong
-  }
-
-  pi.pid = pid;
-  pi.tid = tlist[0].tid;
-  pi.codeaddr = (uint32)BADADDR; // unknown :(
-  pi.dataaddr = (uint32)BADADDR;
-  trk.tpi = pi;
-  create_process_start_event(tlist[0].name.c_str());
-  // create fake PROCESS_ATTACH/THREAD_START event for each thread
-  for ( ssize_t i=tlist.size()-1; i >= 0; i-- )
-  {
-    debug_event_t ev;
-    ev.eid = THREAD_START;
-    ev.pid = pid;
-    ev.tid = tlist[i].tid;
-    ev.ea = BADADDR;
-    ev.handled = false;
-    if ( i == 0 )
-    {
-      ev.eid = PROCESS_ATTACH;
-      qstrncpy(ev.modinfo.name, tlist[i].name.c_str(), sizeof(ev.modinfo.name));
-      process_name = ev.modinfo.name;
-      ev.modinfo.base = BADADDR; // unknown :(
-      ev.modinfo.size = 0;
-      ev.modinfo.rebase_to = BADADDR;
-    }
-    events.enqueue(ev, IN_BACK);
-  }
-*/
   return 1;
 }
 
@@ -505,7 +217,7 @@ int idaapi dosbox_debmod_t::dbg_attach_process(pid_t pid, int /*event_id*/, int 
 int idaapi dosbox_debmod_t::dbg_prepare_to_pause_process(void)
 {
   debug_event_t ev;
- 
+
   ev.eid = NO_EVENT;
   ev.pid = NO_PROCESS;
   ev.tid = NO_PROCESS;
@@ -521,14 +233,12 @@ int idaapi dosbox_debmod_t::dbg_prepare_to_pause_process(void)
 
   idados_stopped();
 
-  return 1; //trk.suspend_thread(pi.pid, pi.tid);
+  return 1;
 }
 
 //--------------------------------------------------------------------------
 int idaapi dosbox_debmod_t::dbg_exit_process(void)
 {
-//  if ( trk.current_pid() == -1 )
-//    return true; // already terminated
   debug_event_t ev;
 
   ev.eid = PROCESS_EXIT;
@@ -539,9 +249,8 @@ int idaapi dosbox_debmod_t::dbg_exit_process(void)
   ev.exit_code = 0;
 
   events.enqueue(ev, IN_BACK);
-  
-  
-  return 1; //trk.terminate_process(pi.pid);
+
+  return 1;
 }
 
 //--------------------------------------------------------------------------
@@ -567,76 +276,18 @@ printf("bad event->eid\n");
     return 1;
   }
 
-/*  
-  // was single stepping asked?
-  stepping_t::iterator p = stepping.find(event->tid);
-  if ( p != stepping.end() )
-  {
-    stepping.erase(p);
-    ea_t end = event->ea + 0;//get_item_size(event->ea);
-    printf("stepping.\n");
-    return 1; //trk.step_thread(event->pid, event->tid, (int32)event->ea, (int32)end, true);
-  }
-  //int tid = event->tid == -1 ? pi.tid : event->tid;
-*/
-
-  
-  //DEBUG_Continue();
   idados_running();
-  return 1; //trk.resume_thread(event->pid, tid);
+  return 1;
 }
 
-//--------------------------------------------------------------------------
-// currently this function doesn't work because the dlls are usually
-// not present. besides, we will have to implement the import_dll() function
-bool dosbox_debmod_t::import_dll_to_database(ea_t imagebase)
+void idaapi dosbox_debmod_t::dbg_set_exception_info(const exception_info_t *table, int qty)
 {
-/*
-  images_t::iterator p = dlls.find(imagebase);
-  if ( p == dlls.end() )
-  {
-    derror("import_dll_to_database: can't find dll name");
-    return false;
-  }
-
-  if ( imagebase >= 0x80000000 )
-    return false; // we have no access to system memory anyway
-
-  const char *dllname = p->second.name.c_str();
-  linput_t *li = open_linput(dllname, false);
-  if ( li == NULL )
-  {
-    return false;
-  }
-
-  // prepare nice name prefix for exported functions names
-  char prefix[MAXSTR];
-  qstrncpy(prefix, qbasename(dllname), sizeof(prefix));
-  char *ptr = strrchr(prefix, '.');
-  if (ptr != NULL)
-    *ptr = '\0';
-
-  bool ok = false;
-//  bool ok = import_dll(prefix, li, imagebase, (void *)this);
-  close_linput(li);
-*/
-  return false; //ok;
 }
 
 //--------------------------------------------------------------------------
 void idaapi dosbox_debmod_t::dbg_stopped_at_debug_event(void)
 {
-  // we will take advantage of this event to import information
-  // about the exported functions from the loaded dlls
-/*
-  clear_debug_names();
-
-  for ( easet_t::iterator p=dlls_to_import.begin(); p != dlls_to_import.end(); )
-  {
-    import_dll_to_database(*p);
-    dlls_to_import.erase(p++);
-  }
-*/
+    printf("GET HERE dbg_stopped_at_debug_event\n");
 }
 
 //--------------------------------------------------------------------------
@@ -657,7 +308,6 @@ int idaapi dosbox_debmod_t::dbg_set_resume_mode(thid_t tid, resume_mode_t resmod
   if ( resmod != RESMOD_INTO )
     return 0; // not supported
 
-  stepping[tid] = true;
   dosbox_step_ret = DEBUG_RemoteStep(); //fixme step return.
 
   debug_event_t ev;
@@ -668,20 +318,13 @@ int idaapi dosbox_debmod_t::dbg_set_resume_mode(thid_t tid, resume_mode_t resmod
     ev.handled = false;
 
   events.enqueue(ev, IN_BACK);
-  
+
   return 1;
 }
 
 //--------------------------------------------------------------------------
 int idaapi dosbox_debmod_t::dbg_read_registers(thid_t tid, int clsmask, regval_t *values)
 {
-//  uint32 rvals[17];
-//  QASSERT(n > 0 && n <= qnumber(rvals));
-
-//  memset(values, 0, n * sizeof(regval_t)); // force null bytes at the end of floating point registers.
-                                               // we need this to properly detect register modifications,
-                                               // as we compare the whole regval_t structure !
-
   if ( (clsmask & X86_RC_GENERAL) != 0 ) {
 
   values[R_EAX   ].ival = (uint64)reg_eax;
@@ -712,46 +355,23 @@ int idaapi dosbox_debmod_t::dbg_read_registers(thid_t tid, int clsmask, regval_t
 
   // TODO: clear registers for X86_RC_XMM, X86_RC_FPU, X86_RC_MMX
 
-  printf("AX = %08x",(uint64)values[R_EAX   ].ival);
-  printf(" BX = %08x",(uint64)values[R_EBX   ].ival);
-  printf(" CX = %08x",(uint64)values[R_ECX   ].ival);
-  printf(" DX = %08x\n",(uint64)values[R_EDX   ].ival);
-  printf("SI = %08x",(uint64)values[R_ESI   ].ival);
-  printf(" DI = %08x",(uint64)values[R_EDI   ].ival);
-  printf(" BP = %08x",(uint64)values[R_EBP   ].ival);
-  printf(" SP = %08x\n",(uint64)values[R_ESP   ].ival);
-  printf("IP = %08x",(uint64)values[R_EIP   ].ival);
-  printf(" Flags = %08x\n",(uint64)values[R_EFLAGS].ival);
-  printf("CS = %08x",(uint64)values[R_CS    ].ival);
-  printf(" SS = %08x",(uint64)values[R_SS    ].ival);
-  printf(" DS = %08x",(uint64)values[R_DS    ].ival);
-  printf(" ES = %08x\n",(uint64)values[R_ES    ].ival);
-  printf("FS = %08x",(uint64)values[R_FS    ].ival);
-  printf(" GS = %08x\n",(uint64)values[R_GS    ].ival);
+  printf("AX = %04x",(uint32)values[R_EAX   ].ival);
+  printf(" BX = %04x",(uint32)values[R_EBX   ].ival);
+  printf(" CX = %04x",(uint32)values[R_ECX   ].ival);
+  printf(" DX = %04x\n",(uint32)values[R_EDX   ].ival);
+  printf("SI = %04x",(uint32)values[R_ESI   ].ival);
+  printf(" DI = %04x",(uint32)values[R_EDI   ].ival);
+  printf(" BP = %04x",(uint32)values[R_EBP   ].ival);
+  printf(" SP = %04x\n",(uint32)values[R_ESP   ].ival);
+  printf("IP = %04x",(uint32)values[R_EIP   ].ival);
+  printf(" Flags = %04x\n",(uint32)values[R_EFLAGS].ival);
+  printf("CS = %04x",(uint32)values[R_CS    ].ival);
+  printf(" SS = %04x",(uint32)values[R_SS    ].ival);
+  printf(" DS = %04x",(uint32)values[R_DS    ].ival);
+  printf(" ES = %04x\n",(uint32)values[R_ES    ].ival);
+  printf("FS = %04x",(uint32)values[R_FS    ].ival);
+  printf(" GS = %04x\n",(uint32)values[R_GS    ].ival);
 
-/*
-  if ( exited || !trk.read_regs(pi.pid, tid, 0, n, rvals) )
-    return 0;
-
-  for ( int i=0; i < n; i++ )
-  {
-    debdeb("%cR%d: %08X", i==8 ? '\n' : ' ', i, rvals[i]);
-    values[i].ival = rvals[i];
-  }
-  debdeb("\n");
-
-  // if we read the PC and PSW values, check that our virtual register T
-  // and real PSW at that address are the same. If not, copy real T to our
-  // virtual register T
-  if ( n == qnumber(rvals) ) // PC and PSW are read?
-  {
-    ea_t pc = rvals[15];
-    int real_t = (rvals[16] & 0x20) != 0;
-    int virt_t = getSR(pc, T) != 0;
-    if ( real_t != virt_t )
-      splitSRarea1(pc, T, real_t, SR_autostart);
-  }
-*/
   return 1;
 }
 
@@ -785,176 +405,194 @@ int idaapi dosbox_debmod_t::dbg_write_register(thid_t tid, int reg_idx, const re
     default : break;
   }
 
-  return 1;//trk.write_regs(pi.pid, tid, reg_idx, 1, &v);
+  return 1;
 }
 
 //--------------------------------------------------------------------------
 int idaapi dosbox_debmod_t::dbg_get_memory_info(meminfo_vec_t &miv)
 {
 /*
-   miv->startEA = 0x0; //0;//r_debug.base; //(ea_t)GetAddress(0,0);
-   miv->endEA = (ea_t)GetAddress(SegValue(ds),0); // 0x1970;
-   miv->endEA--;
+   miv->start_ea = 0x0; //0;//r_debug.base; //(ea_t)GetAddress(0,0);
+   miv->end_ea = (ea_t)GetAddress(SegValue(ds),0); // 0x1970;
+   miv->end_ea--;
    strcpy(miv->name, "ROM");
-   miv->sclass[0] = '\0'; 
-   miv->perm = 0 | SEGPERM_READ;
-   miv++;
- 
-   miv->startEA = (ea_t)GetAddress(SegValue(ds),0); // 0x1970;
-   miv->endEA = (ea_t)GetAddress(SegValue(cs),0); // 0x1a70; //(ea_t)GetAddress(SegValue(ds),0);
-   miv->endEA--;
-   strcpy(miv->name, "PSP");
-   miv->sclass[0] = '\0'; 
+   miv->sclass[0] = '\0';
    miv->perm = 0 | SEGPERM_READ;
    miv++;
 
-   miv->startEA = (ea_t)GetAddress(SegValue(cs),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
-   miv->endEA = (ea_t)GetAddress(SegValue(ss), 0); // 0x1c20; //GetAddress(0xf000,0) - 1;
-   miv->endEA--;
+   miv->start_ea = (ea_t)GetAddress(SegValue(ds),0); // 0x1970;
+   miv->end_ea = (ea_t)GetAddress(SegValue(cs),0); // 0x1a70; //(ea_t)GetAddress(SegValue(ds),0);
+   miv->end_ea--;
+   strcpy(miv->name, "PSP");
+   miv->sclass[0] = '\0';
+   miv->perm = 0 | SEGPERM_READ;
+   miv++;
+
+   miv->start_ea = (ea_t)GetAddress(SegValue(cs),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
+   miv->end_ea = (ea_t)GetAddress(SegValue(ss), 0); // 0x1c20; //GetAddress(0xf000,0) - 1;
+   miv->end_ea--;
    strcpy(miv->name, ".text");
    miv->sclass[0] = '\0';
    miv->perm = 0 | SEGPERM_READ | SEGPERM_WRITE | SEGPERM_EXEC;
    miv++;
 
-   miv->startEA = (ea_t)GetAddress(SegValue(ss),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
-   miv->endEA = (ea_t)GetAddress(SegValue(ss), 0xffff); //reg_sp); // 0x1c20; //GetAddress(0xf000,0) - 1;
-   miv->endEA--;
+   miv->start_ea = (ea_t)GetAddress(SegValue(ss),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
+   miv->end_ea = (ea_t)GetAddress(SegValue(ss), 0xffff); //reg_sp); // 0x1c20; //GetAddress(0xf000,0) - 1;
+   miv->end_ea--;
    strcpy(miv->name, ".stack");
    miv->sclass[0] = '\0';
    miv->perm = 0 | SEGPERM_READ | SEGPERM_WRITE;
    miv++;
 
-   miv->startEA = (ea_t)GetAddress(0xf100,0); 
-   miv->endEA = (ea_t)GetAddress(0xf100, 0x1000); 
-   miv->endEA--;
+   miv->start_ea = (ea_t)GetAddress(0xf100,0);
+   miv->end_ea = (ea_t)GetAddress(0xf100, 0x1000);
+   miv->end_ea--;
    strcpy(miv->name, ".callbacks");
    miv->sclass[0] = '\0';
    miv->perm = 0 | SEGPERM_READ | SEGPERM_WRITE | SEGPERM_EXEC;
    miv++;
 */
 
-static bool first_run = true;
+   static bool first_run = true;
 
-if(!first_run)
-  return -2;
+   if(!first_run)
+        return -2;
 
    // Read from PSP
    int last_user_seg = mem_readw(GetAddress(app_base>>4, 0x2));
-   printf("last user seg = %d\n", last_user_seg);
+   printf("last user seg = %x\n", last_user_seg);
 
    memory_info_t *mi = &miv.push_back();
-   mi->startEA = 0x0;
-   mi->endEA = 0x400;
-   mi->endEA--;
+   mi->start_ea = 0x0;
+   mi->end_ea = 0x400;
+   mi->end_ea--;
    mi->name = "INT_TABLE";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ | SEGPERM_WRITE;
-   mi->sbase = 0; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
    mi = &miv.push_back();
-   mi->startEA = 0x400;
-   mi->endEA = 0x600;
-   mi->endEA--;
+   mi->start_ea = 0x400;
+   mi->end_ea = 0x600;
+   mi->end_ea--;
    mi->name = "BIOS";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ;
-   mi->sbase = 0x40; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0x40;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
    mi = &miv.push_back();
-   mi->startEA = 0x600;
-   mi->endEA = app_base;
-   mi->endEA--;
+   mi->start_ea = 0x600;
+   mi->end_ea = app_base;
+   mi->end_ea--;
    mi->name = "DOS?";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ;
    mi->sbase = 0x60;
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
    mi = &miv.push_back();
-   mi->startEA = app_base;
-   mi->endEA = app_base + 0x100;
-   mi->endEA--;
+   mi->start_ea = app_base;
+   mi->end_ea = app_base + 0x100;
+   mi->end_ea--;
    mi->name = "PSP";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ;
    mi->sbase = app_base>>4;
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
    mi = &miv.push_back();
-   mi->startEA = app_base + 0x200;
-   mi->endEA = (ea_t)GetAddress(last_user_seg, 0x10);
-   mi->endEA--;
+   mi->start_ea = app_base + 0x200;
+   mi->end_ea = (ea_t)GetAddress(last_user_seg, 0x10);
+   mi->end_ea--;
    mi->name = ".text"; // Not the best name; it also covers data/stack/...
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ | SEGPERM_WRITE | SEGPERM_EXEC;
    mi->sbase = app_base>>4;
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
 /*
    // IDA seems to take care of this itself
    mi = &miv.push_back();
-   mi->startEA = (ea_t)GetAddress(SegValue(ss),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
-   mi->endEA = (ea_t)GetAddress(SegValue(ss), 0xffff); //reg_sp); // 0x1c20; //GetAddress(0xf000,0) - 1;
-   mi->endEA--;
+   mi->start_ea = (ea_t)GetAddress(SegValue(ss),0); //0x1a70; //(ea_t)GetAddress(SegValue(ds), 0); //GetAddress(0xa000,0);
+   mi->end_ea = (ea_t)GetAddress(SegValue(ss), 0xffff); //reg_sp); // 0x1c20; //GetAddress(0xf000,0) - 1;
+   mi->end_ea--;
    mi->name = ".stack";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ | SEGPERM_WRITE;
    mi->sbase = SegValue(ss);
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 */
    mi = &miv.push_back();
-   mi->startEA = 0xA0000;
-   mi->endEA = 0xB0000;
-   mi->endEA--;
+   mi->start_ea = 0xA0000;
+   mi->end_ea = 0xB0000;
+   mi->end_ea--;
    mi->name = "A000";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ;
-   mi->sbase = 0xa000; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0xa000;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
    mi = &miv.push_back();
-   mi->startEA = 0xB0000;
-   mi->endEA = 0xB8000;
-   mi->endEA--;
+   mi->start_ea = 0xB0000;
+   mi->end_ea = 0xB8000;
+   mi->end_ea--;
    mi->name = "B000";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ | SEGPERM_WRITE;
-   mi->sbase = 0xb000; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0xb000;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
    mi = &miv.push_back();
-   mi->startEA = 0xB8000;
-   mi->endEA = 0xC0000;
-   mi->endEA--;
+   mi->start_ea = 0xB8000;
+   mi->end_ea = 0xC0000;
+   mi->end_ea--;
    mi->name = "B800";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ |SEGPERM_WRITE;
-   mi->sbase = 0xb800; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0xb800;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
    mi = &miv.push_back();
-   mi->startEA = 0xC0000;
-   mi->endEA = 0xC1000;
-   mi->endEA--;
+   mi->start_ea = 0xC0000;
+   mi->end_ea = 0xC1000;
+   mi->end_ea--;
    mi->name = "VIDBIOS";
    mi->bitness = 0;
    mi->perm = 0 | SEGPERM_READ | SEGPERM_EXEC;
-   mi->sbase = 0xc000; 
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+   mi->sbase = 0xc000;
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
    mi = &miv.push_back();
-   mi->startEA = (ea_t)GetAddress(0xf100,0); 
-   mi->endEA = (ea_t)GetAddress(0xf100, 0x1000); 
-   mi->endEA--;
+   mi->start_ea = (ea_t)GetAddress(0xf100,0);
+   mi->end_ea = (ea_t)GetAddress(0xf100, 0x1000);
+   mi->end_ea--;
    mi->name = ".callbacks";
    mi->perm = 0 | SEGPERM_READ | SEGPERM_WRITE | SEGPERM_EXEC;
    mi->sbase = 0xf100;
-printf("mi = %x,%x\n",mi->startEA, mi->endEA);
+printf("mi = %x,%x\n",mi->start_ea, mi->end_ea);
 
-printf("CS:IP = %04x:%04x\n",SegValue(cs), reg_eip); 
+printf("CS:IP = %04x:%04x\n",SegValue(cs), reg_eip);
 
   first_run = false;
 
   return 1;
+}
+
+int idaapi dosbox_debmod_t::dbg_get_scattered_image(scattered_image_t &si, ea_t base)
+{
+    printf("GET HERE dbg_get_scattered_image\n");
+    return -1; // not implemented
+}
+
+bool idaapi dosbox_debmod_t::dbg_get_image_uuid(bytevec_t *uuid, ea_t base)
+{
+    printf("GET HERE dbg_get_image_uuid\n");
+    return false; // not implemented
+}
+
+ea_t idaapi dosbox_debmod_t::dbg_get_segm_start(ea_t base, const qstring &segname)
+{
+    printf("GET HERE dbg_get_segm_start\n");
+    return false; // not implemented
 }
 
 //--------------------------------------------------------------------------
@@ -963,10 +601,10 @@ ssize_t idaapi dosbox_debmod_t::dbg_read_memory(ea_t ea, void *buffer, size_t si
  int i;
  PhysPt addr = (PhysPt)ea;
  uchar *buf;
- 
+
  buf = (uchar *)buffer;
  //addr = addr + r_debug.base;
- 
+
  for(i=0;i<size;i++)
   {
    buf[i] = mem_readb(addr);
@@ -987,72 +625,31 @@ ssize_t idaapi dosbox_debmod_t::dbg_write_memory(ea_t ea, const void *buffer, si
   for(int i=0;i<size;i++)
     mem_writeb(ea + i, ((Bit8u *)buffer)[i]);
 
+  printf("dbg_write_memory @ %x, size=%d\n", ea, size);
   return size;
 }
 
 //--------------------------------------------------------------------------
-int  idaapi dosbox_debmod_t::dbg_open_file(const char *file, uint32 *fsize, bool readonly)
+int idaapi dosbox_debmod_t::dbg_open_file(const char *file, uint64 *fsize, bool readonly)
 {
-/*
-  if ( fsize != NULL )
-    *fsize = 0;
-  int h = trk.open_file(file, readonly ? TrkFileOpenRead : TrkFileOpenCreate);
-  if ( h > 0 )
-  {
-    if ( readonly && fsize != NULL )
-    {
-      // problem: trk does not have the ftell call
-      // we will have to find the file size using the binary search
-      // it seems the read_file() doesn't work at all!
-      size_t size = 0x100000; // assume big file
-      size_t delta = size;
-      while ( (delta>>=1) > 0 )
-      {
-        uchar dummy;
-        if ( dbg_read_file(h, uint32(size-1), &dummy, 1) == 1 )
-          size += delta;
-        else
-          size -= delta;
-      }
-      *fsize = uint32(size - 1);
-    }
-  }
-  else
-  {
-    qerrno = eOS;
-    // fixme: set errno
-  }
-  return h;
-*/
- return 0;
+  return 0;
 }
 
 //--------------------------------------------------------------------------
 void idaapi dosbox_debmod_t::dbg_close_file(int fn)
 {
-  //trk.close_file(fn, 0);
 }
 
 //--------------------------------------------------------------------------
-ssize_t idaapi dosbox_debmod_t::dbg_read_file(int fn, uint32 off, void *buf, size_t size)
+ssize_t idaapi dosbox_debmod_t::dbg_read_file(int fn, qoff64_t off, void *buf, size_t size)
 {
-/*
-  if ( !trk.seek_file(fn, off, SEEK_SET) )
-    return -1;
-  return trk.read_file(fn, buf, size);
-*/
   return -1;
 }
 
 //--------------------------------------------------------------------------
-ssize_t idaapi dosbox_debmod_t::dbg_write_file(int fn, uint32 off, const void *buf, size_t size)
+ssize_t idaapi dosbox_debmod_t::dbg_write_file(int fn, qoff64_t off, const void *buf, size_t size)
 {
-/*
-  if ( !trk.seek_file(fn, off, SEEK_SET) )
-    return -1;
-  return trk.write_file(fn, buf, size);
-*/
-  return -1; 
+  return -1;
 }
 
 //--------------------------------------------------------------------------
@@ -1062,26 +659,11 @@ int dosbox_debmod_t::get_system_specific_errno(void) const
 }
 
 //--------------------------------------------------------------------------
-int idaapi dosbox_debmod_t::dbg_thread_get_sreg_base(
-        thid_t tid,
-        int sreg_value,
-        ea_t *pe)
+int idaapi dosbox_debmod_t::dbg_thread_get_sreg_base(ea_t *ea, thid_t thread_id, int sreg_value)
 {
-  *pe = sreg_value<<4;
+  *ea = sreg_value<<4;
 
   return 1;
-}
-
-//--------------------------------------------------------------------------
-bool dosbox_debmod_t::refresh_hwbpts(void)
-{
-  return 0; // not implemented
-}
-
-//--------------------------------------------------------------------------
-HANDLE dosbox_debmod_t::get_thread_handle(thid_t tid)
-{
-  return (HANDLE)tid; // there are no thread handles
 }
 
 //--------------------------------------------------------------------------
@@ -1101,18 +683,12 @@ debmod_t *create_debug_session()
 //--------------------------------------------------------------------------
 bool term_subsystem()
 {
-//  tdb_term();
-//  qmutex_free(g_mutex);
   return true;
 }
 
 //--------------------------------------------------------------------------
 bool init_subsystem()
 {
-//  if ((g_mutex = qmutex_create()) == NULL)
-//    return false;
-
-//  tdb_init();
   return true;
 }
 
@@ -1120,7 +696,7 @@ bool dosbox_debmod_t::hit_breakpoint(PhysPt addr)
 {
   printf("hit breakpoint! 0x%x\n", addr);
   debug_event_t ev;
- 
+
   ev.eid = BREAKPOINT;
   ev.pid = NO_PROCESS;
   ev.tid = NO_PROCESS;
@@ -1145,7 +721,6 @@ bool dosbox_debmod_t::hit_breakpoint(PhysPt addr)
   return 1;
 }
 
-
 inline ea_t find_app_base()
 {
   ea_t base = (ea_t)GetAddress(SegValue(cs), 0);
@@ -1161,7 +736,5 @@ inline ea_t find_app_base()
   if(addr < base)
    base = addr;
 
- return base;
+  return base;
 }
-
-

@@ -1,18 +1,17 @@
 #include <segment.hpp>
-#include <srarea.hpp>
 
 //--------------------------------------------------------------------------
 // installs or uninstalls debugger specific idc functions
 inline bool register_idc_funcs(bool)
 {
   return true;
-  }
+}
 
 //--------------------------------------------------------------------------
 void idaapi rebase_if_required_to(ea_t new_base)
 {
   ea_t currentbase = new_base;
-  ea_t imagebase = inf.baseaddr<<4; 
+  ea_t imagebase = inf.baseaddr<<4;
 
   msg("imagebase = %a newbase=%a\n", imagebase, new_base);
 
@@ -36,9 +35,7 @@ void idaapi rebase_if_required_to(ea_t new_base)
     }
 
     warning("Database rebased to %ah\n", new_base);
-
   }
-
 }
 
 //--------------------------------------------------------------------------
@@ -48,6 +45,7 @@ static bool init_plugin(void)
   if (!init_subsystem())
     return false;
 #endif
+  debugger.resume_modes = DBG_RESMOD_STEP_INTO;
   if ( !netnode::inited() || is_miniidb() || inf.is_snapshot() )
   {
     //dosbox is always remote.

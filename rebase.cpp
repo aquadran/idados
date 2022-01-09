@@ -1,5 +1,5 @@
 /*
- * Rebase 16bit MS-DOS files. 
+ * Rebase 16bit MS-DOS files.
  *
  *
  *
@@ -13,7 +13,6 @@
 #include <diskio.hpp>
 #include <loader.hpp>
 #include <segment.hpp>
-#include <srarea.hpp>
 #include <fixup.hpp>
 #include <exehdr.h>
 
@@ -23,9 +22,9 @@ bool rebase_exe(adiff_t delta)
  sel_t dseg_sel = 0;
 
  char exe_name[QMAXPATH];
- 
+
  get_input_file_path(exe_name, sizeof(exe_name));
- 
+
  msg("exe = %s\n", exe_name);
 
  FILE *fp = fopenRB(exe_name);
@@ -51,14 +50,12 @@ bool rebase_exe(adiff_t delta)
 
    fixup_data_t fd;
 
-
    fd.type         = FIXUP_SEG16;
    fd.off          = 0;
    fd.displacement = 0;
 
-
    qfseek(fp, E.TablOff, SEEK_SET);
-   for(int i = 0; i < E.ReloCnt; i++) 
+   for(int i = 0; i < E.ReloCnt; i++)
    {
      unsigned short buf[2];
 
@@ -85,7 +82,7 @@ bool rebase_exe(adiff_t delta)
 void rebase_to(ea_t new_base)
 {
   ea_t currentbase = new_base;
-  ea_t imagebase = inf.baseaddr<<4; 
+  ea_t imagebase = inf.baseaddr << 4;
 
   msg("imagebase = %a newbase=%a\n", imagebase, new_base);
 
@@ -100,7 +97,7 @@ void rebase_to(ea_t new_base)
       if(rebase_exe(delta) == false)
       {
         warning("Failed to relocate EXE offsets!");
-        return; 
+        return;
       }
     }
 
@@ -171,7 +168,7 @@ msg("\n");
               }
             }
           }
-        } 
+        }
 
         if(update_sr)
         {
@@ -181,12 +178,9 @@ msg("\n");
         }
       }
     }
-
-
   }
 
-warning("Warning!\n\nDatabase rebased to %ah\n\nPlease consider starting with a new database at this address.", new_base);
-
+  warning("Warning!\n\nDatabase rebased to %ah\n\nPlease consider starting with a new database at this address.", new_base);
 }
 
 //--------------------------------------------------------------------------

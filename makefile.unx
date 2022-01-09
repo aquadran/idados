@@ -1,8 +1,6 @@
 include $(IDA)/allmake.unx
 
 #DONT_FORCE_CPP=1
-#__CFLAGS=-DLIBWRAP
-#LIBWRAP=-lwrap
 WRPOBJ=linux_check$(O)
 PROC1=dosbox_rstub
 O1=rpc_debmod_dosbox

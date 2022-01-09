@@ -10,15 +10,11 @@ ea_t idaapi rpc_debmod_dosbox_t::map_address(ea_t ea, const regval_t *regs, int 
 {
  ea_t mapped_ea = ea;
 
-// warning("ICON ERROR\nAUTOHIDE NONE\n"
-//      "testing");
  if(regs)
  {
    switch(regnum)
    {
-     case R_EIP : 
-                  mapped_ea = (regs[R_CS].ival<<4) + regs[R_EIP].ival;
-                  break;
+     case R_EIP : mapped_ea = (regs[R_CS].ival<<4) + regs[R_EIP].ival; break;
      case R_ESP : mapped_ea = (regs[R_SS].ival<<4) + regs[R_ESP].ival; break;
      case R_EBP : mapped_ea = (regs[R_SS].ival<<4) + regs[R_EBP].ival; break;
 
@@ -55,6 +51,6 @@ static const char *get_reg_name(int reg_idx)
 		case R_GS : return "GS";
 		case R_SS : return "SS";
 	}
-	
+
 	return "??";
 }
