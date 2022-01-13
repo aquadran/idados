@@ -185,6 +185,8 @@ void dosbox_debmod_t::create_process_start_event(const char *path)
   events.enqueue(ev, IN_BACK);
 }
 
+void VGA_ForceRefresh(Bitu /*val*/);
+
 //--------------------------------------------------------------------------
 gdecode_t idaapi dosbox_debmod_t::dbg_get_debug_event(debug_event_t *event, int timeout_ms)
 {
@@ -193,6 +195,7 @@ gdecode_t idaapi dosbox_debmod_t::dbg_get_debug_event(debug_event_t *event, int 
 
   while ( true )
   {
+    VGA_ForceRefresh(0);
     // are there any pending events?
     if ( events.retrieve(event) )
     {
@@ -262,7 +265,7 @@ int idaapi dosbox_debmod_t::dbg_continue_after_event(const debug_event_t *event)
     || event->eid == PROCESS_EXIT )   // After EXIT TRK does not accept 'continue'
   {
 printf("bad event->eid\n");
-    return 1;
+    exit(1);
   }
 
   // if there are pending events, do not resume the app
